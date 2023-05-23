@@ -1,2 +1,2 @@
 # tech26z.github.io
-my home page
+[how to write marddown](https://guides.github.com/features/mastering-markdown/)
