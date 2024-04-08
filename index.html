@@ -1,18 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<script type="text/javascript" src="js/jquery-3.7.1.min.js"></script>
-	<script type="text/javascript">
-		alert("点击观看视频");
-	</script>
-	
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device, initial-scale=1.0">
+	<title>Map</title>
+	<style>
+		#map{
+			width: 1000px;
+			height: 600px;
+			border: 1px solid red;
+		}
+	</style>
+	<!--<script type="text/javascript" src="js/jquery-3.7.1.min.js"></script>-->
+	<script type="text/javascript" src="https://api.map.baidu.com/api?v=1.0&&type=webgl&ak=0G22vzeQxUWMQyn0kLwiQcZi0j0dDCDq">
+	</script>	
 </head>
 <body>
-
-	<h1>My first website!</h1>
+	<h1>中油条有限公司</h1>
+	<div id="map"></div>
+	<script type="text/javascript">
+		var map = new BMapGL.Map("map");
+		var point = new BMapGL.Point(116.404, 39.915);
+		map.centerAndZoom(point, 15);
+	</script>
+    <!--
 	<video width="1280" height="720" controls autoplay loop>
 	<source src="video/20240109-114157.mp4" type="video/mp4">
          Your browser does not support vidio tag
 	</video>
+
+	<script type="text/javascript"
+	src="https://api.map.baidu.com/api?v=3.0&ak=4m22zh7bPaF5tCkipkdi1vLQ"></script>
+	<script type="text/javascript">
+		alert("点击观看视频");
+	</script>
+    
+	-->
 </body>
 </html>
