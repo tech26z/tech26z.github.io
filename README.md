@@ -1,2 +1,3 @@
 # tech26z.github.io
-home page
+
+this page shows some cool test stuff.
