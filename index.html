@@ -1,16 +1,968 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title></title>
-	<style type="text/css">
-		
-	</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>欢乐钓鱼大师</title>
+    <script src="https://aisearch-task.bj.bcebos.com/static/tailwindcss-3.4.17.js"></script>
+    <script src="https://aisearch-task.bj.bcebos.com/static/p5-1.9.4.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        body {
+            overflow: hidden;
+            touch-action: none;
+            font-family: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif;
+        }
+        
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #game-canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        #game-canvas canvas {
+            display: block;
+        }
+        
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+        
+        .ui-overlay > div {
+            pointer-events: none;
+        }
+        
+        .ui-element {
+            pointer-events: auto !important;
+            position: relative;
+            z-index: 100 !important;
+        }
+        
+        #action-btn {
+            z-index: 200 !important;
+        }
+        
+        #status-panel, #power-bar-container, #reel-bar-container {
+            pointer-events: none !important;
+        }
+        
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-60px) scale(1.2); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px) rotate(-2deg); }
+            75% { transform: translateX(5px) rotate(2deg); }
+        }
+        
+        .score-popup {
+            animation: floatUp 1s ease-out forwards;
+        }
+        
+        .pulse-btn {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .fish-bite {
+            animation: shake 0.3s ease-in-out;
+        }
+        
+        .glass-panel {
+            background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+    </style>
 </head>
-<body>
-	<h1>Hello World!</h1>
-			
-	
+<body class="bg-gradient-to-b from-sky-300 to-sky-500">
+    <div id="game-container">
+        <div id="game-canvas"></div>
+        
+        <!-- UI 覆盖层 -->
+        <div class="ui-overlay">
+            <!-- 顶部信息栏 -->
+            <div class="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none">
+                <div class="glass-panel px-4 py-2 ui-element">
+                    <div class="text-xs text-gray-500">金币</div>
+                    <div class="text-xl font-bold text-yellow-600" id="coins">🪙 0</div>
+                </div>
+                <div class="glass-panel px-4 py-2 ui-element text-center">
+                    <div class="text-xs text-gray-500">已钓到</div>
+                    <div class="text-xl font-bold text-blue-600" id="fish-count">🐟 0</div>
+                </div>
+            </div>
+            
+            <!-- 游戏状态提示 -->
+            <div id="status-panel" class="absolute top-28 left-1/2 -translate-x-1/2 glass-panel px-6 py-3 text-center pointer-events-none">
+                <div class="text-lg font-bold text-blue-700" id="status-text">点击屏幕抛竿</div>
+                <div class="text-sm text-gray-500 mt-1" id="status-hint">等待鱼儿上钩...</div>
+            </div>
+            
+            <!-- 力度条（抛竿时显示）-->
+            <div id="power-bar-container" class="absolute bottom-32 left-8 right-8 hidden pointer-events-none">
+                <div class="text-center text-white font-bold text-lg mb-2 drop-shadow-lg">抛竿力度</div>
+                <div class="h-6 bg-white/30 rounded-full overflow-hidden border-2 border-white/50">
+                    <div id="power-bar" class="h-full bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <!-- 收杆进度条（博弈阶段）-->
+            <div id="reel-bar-container" class="absolute bottom-32 left-8 right-8 hidden pointer-events-none">
+                <div class="text-center text-white font-bold text-lg mb-2 drop-shadow-lg" id="fish-name">未知鱼类</div>
+                <div class="h-8 bg-white/30 rounded-full overflow-hidden border-2 border-white/50 relative">
+                    <div id="reel-progress" class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all" style="width: 0%"></div>
+                    <div id="fish-zone" class="absolute top-0 h-full bg-yellow-400/60" style="left: 30%; width: 20%"></div>
+                </div>
+                <div class="flex justify-between text-white text-sm mt-1 drop-shadow">
+                    <span>⬅️ 鱼在逃</span>
+                    <span class="pulse-btn">点击/按住收杆！</span>
+                    <span>成功 ➡️</span>
+                </div>
+            </div>
+            
+            <!-- 鱼类图鉴按钮 -->
+            <button id="catalog-btn" class="ui-element absolute bottom-8 right-4 w-14 h-14 bg-white/90 rounded-full shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform" style="z-index:150">
+                📖
+            </button>
+        </div>
+        
+        <!-- 操作按钮区 - 独立最高层级 -->
+        <button id="action-btn" class="ui-element pulse-btn bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-bold text-xl px-12 py-4 rounded-full shadow-lg hover:shadow-xl transition-all transform active:scale-95" style="position:absolute;bottom:32px;left:50%;transform:translateX(-50%);z-index:300">
+            🎣 抛竿
+        </button>
+        
+        <!-- 鱼类图鉴弹窗 -->
+        <div id="catalog-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+            <div class="glass-panel w-full max-w-md max-h-[80vh] overflow-y-auto p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-blue-800">🐠 鱼类图鉴</h2>
+                    <button id="close-catalog" class="text-2xl text-gray-500 hover:text-gray-700">✕</button>
+                </div>
+                <div id="fish-list" class="space-y-3">
+                    <!-- 动态生成 -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- 收获弹窗 -->
+        <div id="catch-modal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+            <div class="glass-panel w-full max-w-sm p-6 text-center transform scale-0 transition-transform duration-300" id="catch-content">
+                <div class="text-6xl mb-4" id="catch-emoji">🐟</div>
+                <h2 class="text-2xl font-bold text-blue-800 mb-2" id="catch-title">钓到了！</h2>
+                <div class="text-lg text-gray-700 mb-2" id="catch-fish-name">小鱼</div>
+                <div class="text-yellow-600 font-bold text-xl mb-4" id="catch-value">+10 金币</div>
+                <div class="text-sm text-gray-500 mb-4" id="catch-rarity">普通</div>
+                <button id="continue-btn" class="bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-bold px-8 py-3 rounded-full shadow-lg active:scale-95">
+                    继续钓鱼
+                </button>
+            </div>
+        </div>
+        
+        <!-- 分数弹出容器 -->
+        <div id="popups" class="absolute inset-0 overflow-hidden" style="pointer-events:none"></div>
+    </div>
+
+    <script>
+        // ==================== 游戏配置 ====================
+        const FISH_TYPES = [
+            { name: '小鲤鱼', emoji: '🐟', minWeight: 1, maxWeight: 3, value: 10, rarity: '普通', color: '#FF6B6B', difficulty: 0.3, speed: 1.5 },
+            { name: '鲫鱼', emoji: '🐠', minWeight: 2, maxWeight: 5, value: 25, rarity: '普通', color: '#4ECDC4', difficulty: 0.4, speed: 2 },
+            { name: '草鱼', emoji: '🐡', minWeight: 3, maxWeight: 8, value: 50, rarity: '稀有', color: '#95E1D3', difficulty: 0.5, speed: 2.5 },
+            { name: '鲈鱼', emoji: '🦈', minWeight: 5, maxWeight: 12, value: 100, rarity: '稀有', color: '#A8DADC', difficulty: 0.6, speed: 3 },
+            { name: '金鱼', emoji: '✨', minWeight: 1, maxWeight: 2, value: 200, rarity: '传说', color: '#FFD93D', difficulty: 0.8, speed: 4 },
+            { name: '锦鲤', emoji: '🎏', minWeight: 4, maxWeight: 10, value: 150, rarity: '史诗', color: '#FF8C42', difficulty: 0.7, speed: 3.5 },
+            { name: '金枪鱼', emoji: '🐟', minWeight: 8, maxWeight: 20, value: 300, rarity: '史诗', color: '#1E3A5F', difficulty: 0.85, speed: 4.5 },
+            { name: '大闸蟹', emoji: '🦀', minWeight: 2, maxWeight: 4, value: 80, rarity: '稀有', color: '#FF6B35', difficulty: 0.45, speed: 1 },
+            { name: '乌龟', emoji: '🐢', minWeight: 5, maxWeight: 15, value: 180, rarity: '稀有', color: '#6BCB77', difficulty: 0.35, speed: 0.8 },
+            { name: '章鱼', emoji: '🐙', minWeight: 3, maxWeight: 7, value: 120, rarity: '稀有', color: '#9B59B6', difficulty: 0.65, speed: 2.8 },
+            { name: '河豚', emoji: '🐡', minWeight: 1, maxWeight: 3, value: 90, rarity: '稀有', color: '#F39C12', difficulty: 0.55, speed: 2.2 },
+            { name: '鲨鱼幼崽', emoji: '🦈', minWeight: 10, maxWeight: 30, value: 500, rarity: '传说', color: '#34495E', difficulty: 0.95, speed: 5 },
+        ];
+
+        // 游戏状态
+        let gameState = 'idle'; // idle, charging, casting, waiting, biting, reeling, catching, missed
+        let coins = parseInt(localStorage.getItem('fishingCoins') || '0');
+        let totalFish = parseInt(localStorage.getItem('fishingTotal') || '0');
+        let caughtFish = JSON.parse(localStorage.getItem('fishingCaught') || '[]');
+        
+        // 抛竿相关
+        let power = 0;
+        let powerDirection = 1;
+        let castDistance = 0;
+        let hookX = 0;
+        let hookY = 0;
+        let hookDepth = 0;
+        
+        // 鱼相关
+        let currentFish = null;
+        let fishProgress = 0;
+        let fishEscape = 0;
+        let reelZoneCenter = 0.5;
+        let reelZoneWidth = 0.25;
+        let lastReelTime = 0;
+        let fishDirection = 1;
+        
+        // 动画相关
+        let bobberOffset = 0;
+        let waveOffset = 0;
+        let particles = [];
+        let fishes = [];
+        let clouds = [];
+        
+        // 触摸/鼠标
+        let isPressing = false;
+        let pressStartTime = 0;
+
+        // ==================== p5.js 主程序 ====================
+        function setup() {
+            let canvas = createCanvas(windowWidth, windowHeight);
+            canvas.parent('game-canvas');
+            
+            // 初始化云和鱼群装饰
+            for (let i = 0; i < 5; i++) {
+                clouds.push({
+                    x: random(width),
+                    y: random(50, 150),
+                    size: random(60, 120),
+                    speed: random(0.2, 0.5)
+                });
+            }
+            
+            for (let i = 0; i < 8; i++) {
+                fishes.push({
+                    x: random(width),
+                    y: random(height * 0.5, height),
+                    size: random(20, 40),
+                    speed: random(0.5, 2),
+                    dir: random() > 0.5 ? 1 : -1,
+                    type: floor(random(3)),
+                    wiggle: random(TWO_PI)
+                });
+            }
+            
+            updateUI();
+        }
+
+        function draw() {
+            // 清空
+            clear();
+            
+            // 绘制天空渐变（由CSS处理背景，这里绘制海面）
+            drawSky();
+            drawClouds();
+            drawSun();
+            drawWater();
+            drawDecorativeFishes();
+            drawBoat();
+            drawFishingLine();
+            drawBobber();
+            drawParticles();
+            drawFPS();
+            
+            // 根据游戏状态更新逻辑
+            updateGameLogic();
+        }
+
+        function drawSky() {
+            // 天空渐变
+            for (let y = 0; y < height * 0.45; y++) {
+                let t = y / (height * 0.45);
+                let r = lerp(135, 200, t);
+                let g = lerp(206, 230, t);
+                let b = lerp(235, 255, t);
+                stroke(r, g, b);
+                line(0, y, width, y);
+            }
+            
+            // 远山
+            noStroke();
+            fill(100, 150, 180, 100);
+            beginShape();
+            vertex(0, height * 0.4);
+            vertex(width * 0.1, height * 0.32);
+            vertex(width * 0.2, height * 0.38);
+            vertex(width * 0.35, height * 0.3);
+            vertex(width * 0.5, height * 0.36);
+            vertex(width * 0.65, height * 0.28);
+            vertex(width * 0.8, height * 0.35);
+            vertex(width * 0.9, height * 0.31);
+            vertex(width, height * 0.37);
+            vertex(width, height * 0.45);
+            vertex(0, height * 0.45);
+            endShape(CLOSE);
+        }
+
+        function drawSun() {
+            // 太阳
+            fill(255, 230, 100, 200);
+            circle(width * 0.85, height * 0.12, 80);
+            fill(255, 250, 200, 150);
+            circle(width * 0.85, height * 0.12, 100);
+        }
+
+        function drawClouds() {
+            noStroke();
+            fill(255, 255, 255, 200);
+            clouds.forEach(cloud => {
+                cloud.x += cloud.speed;
+                if (cloud.x > width + 100) cloud.x = -100;
+                
+                ellipse(cloud.x, cloud.y, cloud.size, cloud.size * 0.5);
+                ellipse(cloud.x - cloud.size * 0.3, cloud.y + 5, cloud.size * 0.6, cloud.size * 0.35);
+                ellipse(cloud.x + cloud.size * 0.3, cloud.y + 5, cloud.size * 0.7, cloud.size * 0.4);
+            });
+        }
+
+        function drawWater() {
+            // 水面
+            let waterY = height * 0.4;
+            
+            // 水的渐变
+            for (let y = waterY; y < height; y++) {
+                let t = (y - waterY) / (height - waterY);
+                let r = lerp(64, 10, t);
+                let g = lerp(164, 50, t);
+                let b = lerp(223, 120, t);
+                stroke(r, g, b, 230);
+                line(0, y, width, y);
+            }
+            
+            // 波纹
+            waveOffset += 0.05;
+            stroke(255, 255, 255, 40);
+            strokeWeight(2);
+            noFill();
+            for (let i = 0; i < 8; i++) {
+                let y = waterY + i * 20 + 10;
+                beginShape();
+                for (let x = 0; x <= width; x += 10) {
+                    let wave = sin(x * 0.02 + waveOffset + i * 0.5) * 3;
+                    vertex(x, y + wave);
+                }
+                endShape();
+            }
+            strokeWeight(1);
+            
+            // 水面高光
+            stroke(255, 255, 255, 30);
+            line(0, waterY, width, waterY);
+        }
+
+        function drawDecorativeFishes() {
+            let waterY = height * 0.4;
+            fishes.forEach(fish => {
+                fish.x += fish.speed * fish.dir;
+                fish.wiggle += 0.1;
+                
+                if (fish.x > width + 50) { fish.x = -50; fish.dir = 1; }
+                if (fish.x < -50) { fish.x = width + 50; fish.dir = -1; }
+                
+                if (fish.y > waterY + 20) {
+                    push();
+                    translate(fish.x, fish.y + sin(fish.wiggle) * 3);
+                    scale(fish.dir, 1);
+                    
+                    noStroke();
+                    let colors = [
+                        [255, 150, 150, 100],
+                        [150, 200, 255, 100],
+                        [255, 220, 150, 100]
+                    ];
+                    fill(...colors[fish.type]);
+                    ellipse(0, 0, fish.size, fish.size * 0.5);
+                    triangle(-fish.size * 0.4, 0, -fish.size * 0.7, -fish.size * 0.25, -fish.size * 0.7, fish.size * 0.25);
+                    pop();
+                }
+            });
+        }
+
+        function drawBoat() {
+            let boatX = width * 0.15;
+            let boatY = height * 0.38 + sin(waveOffset * 0.5) * 3;
+            
+            push();
+            translate(boatX, boatY);
+            
+            // 船身
+            noStroke();
+            fill(139, 90, 43);
+            beginShape();
+            vertex(-60, 0);
+            vertex(-50, 25);
+            vertex(50, 25);
+            vertex(60, 0);
+            endShape(CLOSE);
+            
+            // 船舷
+            fill(160, 110, 60);
+            rect(-55, -5, 110, 8, 3);
+            
+            // 渔夫（简化版）
+            fill(255, 200, 150); // 头
+            circle(0, -25, 20);
+            fill(100, 100, 150); // 衣服
+            rect(-12, -15, 24, 20, 5);
+            fill(80, 60, 40); // 帽子
+            ellipse(0, -35, 30, 10);
+            rect(-8, -42, 16, 10);
+            
+            // 鱼竿
+            stroke(100, 70, 40);
+            strokeWeight(4);
+            line(10, -20, 80, -80);
+            strokeWeight(1);
+            
+            pop();
+        }
+
+        function drawFishingLine() {
+            if (gameState === 'charging' || gameState === 'idle') return;
+            
+            let boatX = width * 0.15;
+            let boatY = height * 0.38 + sin(waveOffset * 0.5) * 3 - 80;
+            let rodEndX = boatX + 80;
+            let rodEndY = boatY - 60;
+            
+            stroke(100, 100, 100, 180);
+            strokeWeight(1.5);
+            
+            if (gameState === 'casting') {
+                // 抛竿动画
+                let progress = min(1, (millis() - window.castStartTime) / 500);
+                let targetX = boatX + castDistance;
+                let targetY = height * 0.42 + hookDepth;
+                hookX = lerp(rodEndX, targetX, progress);
+                hookY = lerp(rodEndY, targetY, progress);
+                
+                if (progress >= 1) {
+                    gameState = 'waiting';
+                    window.waitStartTime = millis();
+                    createSplash(hookX, hookY);
+                }
+            }
+            
+            // 画鱼线
+            noFill();
+            beginShape();
+            let midX = (rodEndX + hookX) / 2;
+            let midY = min(rodEndY, hookY) - 20 + sin(waveOffset) * 5;
+            vertex(rodEndX, rodEndY);
+            quadraticVertex(midX, midY, hookX, hookY);
+            endShape();
+        }
+
+        function drawBobber() {
+            if (gameState === 'charging' || gameState === 'idle') return;
+            
+            let bobY = hookY;
+            if (gameState === 'waiting' || gameState === 'biting') {
+                bobberOffset += 0.08;
+                bobY = hookY + sin(bobberOffset) * 3;
+                
+                if (gameState === 'biting') {
+                    bobY += sin(millis() * 0.03) * 8;
+                    if (random() < 0.3) createSplash(hookX, hookY + random(-5, 5));
+                }
+            }
+            
+            if (gameState === 'reeling' || gameState === 'catching') {
+                bobY = hookY;
+            }
+            
+            // 浮标
+            noStroke();
+            fill(255, 80, 80);
+            ellipse(hookX, bobY, 16, 20);
+            fill(255);
+            rect(hookX - 6, bobY - 12, 12, 6, 2);
+            fill(255, 100, 100);
+            triangle(hookX, bobY - 18, hookX - 5, bobY - 10, hookX + 5, bobY - 10);
+            
+            // 如果在收杆阶段画鱼
+            if (gameState === 'reeling' || gameState === 'catching') {
+                drawFishOnLine(hookX, bobY + 30);
+            }
+        }
+
+        function drawFishOnLine(x, y) {
+            if (!currentFish) return;
+            
+            push();
+            translate(x, y + sin(millis() * 0.01) * 5);
+            
+            let wiggle = sin(millis() * 0.02) * 10;
+            let size = 30 + currentFish.maxWeight * 2;
+            
+            noStroke();
+            fill(currentFish.color);
+            
+            // 鱼身
+            push();
+            rotate(wiggle * 0.02);
+            ellipse(0, 0, size, size * 0.5);
+            triangle(-size * 0.4, 0, -size * 0.7, -size * 0.2, -size * 0.7, size * 0.2);
+            
+            // 眼睛
+            fill(0);
+            circle(size * 0.25, -size * 0.05, size * 0.12);
+            fill(255);
+            circle(size * 0.27, -size * 0.07, size * 0.05);
+            
+            pop();
+            
+            // 稀有度闪光
+            if (currentFish.rarity === '传说' || currentFish.rarity === '史诗') {
+                noFill();
+                stroke(255, 215, 0, 150 + sin(millis() * 0.01) * 100);
+                strokeWeight(2);
+                circle(0, 0, size + 10 + sin(millis() * 0.008) * 5);
+                strokeWeight(1);
+            }
+            
+            pop();
+        }
+
+        function drawParticles() {
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                p.vy += 0.1;
+                
+                if (p.life <= 0) return false;
+                
+                noStroke();
+                fill(p.r, p.g, p.b, p.life * 255);
+                circle(p.x, p.y, p.size * p.life);
+                return true;
+            });
+        }
+
+        function createSplash(x, y) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: random(-3, 3),
+                    vy: random(-5, -1),
+                    size: random(4, 8),
+                    life: 1,
+                    r: 200,
+                    g: 230,
+                    b: 255
+                });
+            }
+        }
+
+        function drawFPS() {
+            // 调试用，实际不显示
+        }
+
+        function updateGameLogic() {
+            switch (gameState) {
+                case 'charging':
+                    power += powerDirection * 0.03;
+                    if (power >= 1) { power = 1; powerDirection = -1; }
+                    if (power <= 0) { power = 0; powerDirection = 1; }
+                    document.getElementById('power-bar').style.width = (power * 100) + '%';
+                    break;
+                    
+                case 'waiting':
+                    // 等待咬钩，随机时间
+                    let waitTime = millis() - window.waitStartTime;
+                    let biteTime = 1500 + random(0, 4000);
+                    if (waitTime > biteTime) {
+                        gameState = 'biting';
+                        window.biteStartTime = millis();
+                        document.getElementById('status-text').textContent = '🎯 有鱼咬钩了！';
+                        document.getElementById('status-hint').textContent = '快点击收杆！';
+                        document.getElementById('status-panel').classList.add('fish-bite');
+                        setTimeout(() => document.getElementById('status-panel').classList.remove('fish-bite'), 300);
+                    }
+                    break;
+                    
+                case 'biting':
+                    // 咬钩窗口期2秒
+                    if (millis() - window.biteStartTime > 2000) {
+                        // 鱼跑了
+                        gameState = 'missed';
+                        document.getElementById('status-text').textContent = '😢 鱼跑了...';
+                        document.getElementById('status-hint').textContent = '点击重新抛竿';
+                        document.getElementById('reel-bar-container').classList.add('hidden');
+                        setTimeout(() => {
+                            resetGame();
+                        }, 1500);
+                    }
+                    break;
+                    
+                case 'reeling':
+                    updateReeling();
+                    break;
+            }
+        }
+
+        function updateReeling() {
+            if (!currentFish) return;
+            
+            // 鱼会挣扎
+            fishProgress += currentFish.speed * fishDirection * 0.003;
+            
+            // 随机改变方向
+            if (random() < 0.02) {
+                fishDirection *= -1;
+                reelZoneCenter = random(0.2, 0.8);
+            }
+            
+            // 限制范围
+            fishProgress = constrain(fishProgress, -0.2, 1.2);
+            
+            // 更新UI
+            document.getElementById('reel-progress').style.width = (fishProgress * 100) + '%';
+            document.getElementById('fish-zone').style.left = (reelZoneCenter * 100 - reelZoneWidth * 50) + '%';
+            
+            // 如果在收杆
+            if (isPressing) {
+                fishProgress += 0.008;
+            }
+            
+            // 判断是否在安全区内
+            let inZone = abs(fishProgress - reelZoneCenter) < reelZoneWidth / 2;
+            
+            if (!inZone && millis() - lastReelTime > 2000) {
+                // 鱼跑了
+                gameState = 'missed';
+                document.getElementById('status-text').textContent = '💨 ' + currentFish.name + '挣脱了！';
+                document.getElementById('status-hint').textContent = '下次加油！';
+                document.getElementById('reel-bar-container').classList.add('hidden');
+                setTimeout(() => resetGame(), 1500);
+                return;
+            }
+            
+            if (!inZone) {
+                lastReelTime = millis();
+            }
+            
+            // 成功钓上
+            if (fishProgress >= 1) {
+                catchFish();
+            }
+            
+            // 鱼逃到左边跑了
+            if (fishProgress <= 0 && !isPressing) {
+                gameState = 'missed';
+                document.getElementById('status-text').textContent = '💨 ' + currentFish.name + '逃跑了！';
+                document.getElementById('status-hint').textContent = '要及时收杆哦';
+                document.getElementById('reel-bar-container').classList.add('hidden');
+                setTimeout(() => resetGame(), 1500);
+            }
+        }
+
+        function startCharging() {
+            if (gameState !== 'idle' && gameState !== 'missed') return;
+            
+            gameState = 'charging';
+            power = 0;
+            powerDirection = 1;
+            isPressing = true;
+            
+            document.getElementById('action-btn').textContent = '⚡ 松开抛竿';
+            document.getElementById('action-btn').classList.remove('pulse-btn');
+            document.getElementById('power-bar-container').classList.remove('hidden');
+            document.getElementById('status-text').textContent = '蓄力中...';
+            document.getElementById('status-hint').textContent = '松开按钮抛出鱼竿';
+        }
+
+        function castHook() {
+            if (gameState !== 'charging') return;
+            
+            gameState = 'casting';
+            isPressing = false;
+            
+            castDistance = width * 0.3 + power * width * 0.5;
+            hookDepth = 50 + power * 150;
+            hookX = width * 0.15 + castDistance;
+            hookY = height * 0.42 + hookDepth;
+            
+            window.castStartTime = millis();
+            
+            document.getElementById('action-btn').textContent = '🎣 等待中...';
+            document.getElementById('power-bar-container').classList.add('hidden');
+            document.getElementById('status-text').textContent = '🎣 浮漂已入水';
+            document.getElementById('status-hint').textContent = '耐心等待鱼儿上钩';
+        }
+
+        function startReeling() {
+            if (gameState === 'biting') {
+                // 钓到大鱼了！
+                gameState = 'reeling';
+                isPressing = false;
+                
+                // 根据抛竿距离决定鱼的稀有度
+                let rarityRoll = random();
+                let possibleFish = FISH_TYPES;
+                if (power > 0.8) {
+                    possibleFish = FISH_TYPES.filter(f => f.rarity === '传说' || f.rarity === '史诗' || f.rarity === '稀有');
+                } else if (power > 0.5) {
+                    possibleFish = FISH_TYPES.filter(f => f.rarity !== '普通' || random() < 0.3);
+                }
+                
+                currentFish = possibleFish[floor(random(possibleFish.length))];
+                fishProgress = 0.2;
+                reelZoneCenter = 0.5;
+                lastReelTime = millis();
+                fishDirection = 1;
+                
+                document.getElementById('fish-name').textContent = currentFish.emoji + ' ' + currentFish.name;
+                document.getElementById('reel-bar-container').classList.remove('hidden');
+                document.getElementById('status-text').textContent = '💪 正在博弈！';
+                document.getElementById('status-hint').textContent = '按住按钮，保持在黄色区域';
+                document.getElementById('action-btn').textContent = '🎣 收杆！';
+                document.getElementById('action-btn').classList.add('pulse-btn');
+                
+            } else if (gameState === 'reeling') {
+                isPressing = true;
+            }
+        }
+
+        function stopReeling() {
+            isPressing = false;
+        }
+
+        function catchFish() {
+            gameState = 'catching';
+            
+            let weight = currentFish.minWeight + random(0, currentFish.maxWeight - currentFish.minWeight);
+            weight = Math.round(weight * 10) / 10;
+            let value = Math.round(currentFish.value * (weight / currentFish.maxWeight + 0.5));
+            
+            coins += value;
+            totalFish++;
+            
+            // 记录
+            if (!caughtFish.includes(currentFish.name)) {
+                caughtFish.push(currentFish.name);
+            }
+            
+            saveProgress();
+            updateUI();
+            
+            // 显示收获弹窗
+            document.getElementById('catch-emoji').textContent = currentFish.emoji;
+            document.getElementById('catch-fish-name').textContent = currentFish.name + ' ' + weight + 'kg';
+            document.getElementById('catch-value').textContent = '🪙 +' + value + ' 金币';
+            document.getElementById('catch-rarity').textContent = '【' + currentFish.rarity + '】';
+            document.getElementById('catch-rarity').className = 'text-sm mb-4 font-bold ' + 
+                (currentFish.rarity === '传说' ? 'text-yellow-500' : 
+                 currentFish.rarity === '史诗' ? 'text-purple-500' : 
+                 currentFish.rarity === '稀有' ? 'text-blue-500' : 'text-gray-500');
+            
+            let modal = document.getElementById('catch-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('catch-content').style.transform = 'scale(1)';
+            }, 50);
+            
+            // 创建庆祝粒子
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: width/2,
+                    y: height/2,
+                    vx: random(-8, 8),
+                    vy: random(-10, -3),
+                    size: random(8, 15),
+                    life: 1,
+                    r: random(100, 255),
+                    g: random(100, 255),
+                    b: random(100, 255)
+                });
+            }
+            
+            document.getElementById('reel-bar-container').classList.add('hidden');
+            document.getElementById('action-btn').classList.remove('pulse-btn');
+        }
+
+        function resetGame() {
+            gameState = 'idle';
+            currentFish = null;
+            power = 0;
+            fishProgress = 0;
+            
+            document.getElementById('action-btn').textContent = '🎣 抛竿';
+            document.getElementById('action-btn').classList.add('pulse-btn');
+            document.getElementById('status-text').textContent = '点击按钮抛竿';
+            document.getElementById('status-hint').textContent = '按得越久抛得越远';
+            document.getElementById('reel-bar-container').classList.add('hidden');
+            document.getElementById('power-bar-container').classList.add('hidden');
+        }
+
+        function updateUI() {
+            document.getElementById('coins').textContent = '🪙 ' + coins;
+            document.getElementById('fish-count').textContent = '🐟 ' + totalFish;
+            
+            // 更新图鉴
+            updateCatalog();
+        }
+
+        function updateCatalog() {
+            let list = document.getElementById('fish-list');
+            list.innerHTML = '';
+            
+            FISH_TYPES.forEach(fish => {
+                let caught = caughtFish.includes(fish.name);
+                let div = document.createElement('div');
+                div.className = 'flex items-center p-3 rounded-xl ' + 
+                    (caught ? 'bg-blue-50' : 'bg-gray-100');
+                div.innerHTML = `
+                    <div class="text-3xl mr-3">${caught ? fish.emoji : '❓'}</div>
+                    <div class="flex-1">
+                        <div class="font-bold ${caught ? 'text-gray-800' : 'text-gray-400'}">${caught ? fish.name : '???'}</div>
+                        <div class="text-sm ${caught ? 'text-gray-500' : 'text-gray-300'}">
+                            ${caught ? fish.minWeight + '-' + fish.maxWeight + 'kg · 价值' + fish.value + '金币' : '尚未发现'}
+                        </div>
+                    </div>
+                    <div class="text-xs font-bold px-2 py-1 rounded-full ${
+                        fish.rarity === '传说' ? 'bg-yellow-100 text-yellow-700' :
+                        fish.rarity === '史诗' ? 'bg-purple-100 text-purple-700' :
+                        fish.rarity === '稀有' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-200 text-gray-600'
+                    }">${fish.rarity}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function saveProgress() {
+            localStorage.setItem('fishingCoins', coins.toString());
+            localStorage.setItem('fishingTotal', totalFish.toString());
+            localStorage.setItem('fishingCaught', JSON.stringify(caughtFish));
+        }
+
+        function showScorePopup(x, y, text, color) {
+            let popup = document.createElement('div');
+            popup.className = 'absolute score-popup font-bold text-xl pointer-events-none';
+            popup.style.left = x + 'px';
+            popup.style.top = y + 'px';
+            popup.style.color = color;
+            popup.textContent = text;
+            document.getElementById('popups').appendChild(popup);
+            setTimeout(() => popup.remove(), 1000);
+        }
+
+        // ==================== 事件处理 ====================
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+
+        // 触摸/鼠标按下
+        function touchStarted() {
+            handlePress();
+            return false;
+        }
+
+        function mousePressed() {
+            if (mouseX > 0 && mouseX < width && mouseY > 0 && mouseY < height) {
+                handlePress();
+            }
+        }
+
+        function handlePress() {
+            if (gameState === 'idle' || gameState === 'missed') {
+                startCharging();
+            } else if (gameState === 'biting') {
+                startReeling();
+            } else if (gameState === 'reeling') {
+                isPressing = true;
+            }
+        }
+
+        // 触摸/鼠标松开
+        function touchEnded() {
+            handleRelease();
+            return false;
+        }
+
+        function mouseReleased() {
+            handleRelease();
+        }
+
+        function handleRelease() {
+            if (gameState === 'charging') {
+                castHook();
+            } else if (gameState === 'reeling') {
+                isPressing = false;
+            }
+        }
+
+        // UI按钮事件
+        document.getElementById('action-btn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        
+        document.getElementById('action-btn').addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        document.getElementById('continue-btn').addEventListener('click', () => {
+            document.getElementById('catch-content').style.transform = 'scale(0)';
+            setTimeout(() => {
+                document.getElementById('catch-modal').classList.add('hidden');
+                resetGame();
+            }, 300);
+        });
+
+        document.getElementById('catalog-btn').addEventListener('click', () => {
+            updateCatalog();
+            document.getElementById('catalog-modal').classList.remove('hidden');
+        });
+
+        document.getElementById('close-catalog').addEventListener('click', () => {
+            document.getElementById('catalog-modal').classList.add('hidden');
+        });
+
+        document.getElementById('catalog-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'catalog-modal') {
+                document.getElementById('catalog-modal').classList.add('hidden');
+            }
+        });
+
+        // 禁止默认滚动
+        document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('gesturestart', (e) => e.preventDefault());
+        
+        // 初始化图鉴
+        updateCatalog();
+    </script>
 </body>
 </html>
